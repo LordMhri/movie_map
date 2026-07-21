@@ -3,8 +3,8 @@
 Movie Map ranks and visualizes similar films using a hybrid of semantic content
 embeddings and MovieLens collaborative-filtering vectors.
 
-The implementation follows [plans.md](plans.md). The current target is v1,
-Phase 1: MovieLens 1M end to end.
+The implementation follows [plans.md](plans.md). v1 Phase 1 is complete,
+including the zoomable hierarchical-map extension.
 
 ## Architecture
 
@@ -35,10 +35,10 @@ The first run downloads the configured sentence-transformer model. It writes:
 
 ```bash
 cd backend
-go run ./cmd/server -data ../data
+go run ./cmd/server -data ../data -addr :8083
 ```
 
-The service listens on `http://localhost:8080`.
+The service listens on `http://localhost:8083`.
 
 ## Run the web app
 
@@ -47,10 +47,14 @@ In a second terminal:
 ```bash
 cd frontend
 npm install
-npm run dev
+VITE_API_URL=http://localhost:8083 npm run dev
 ```
 
 Open `http://localhost:5173`.
+
+On the map, use the wheel or trackpad to zoom, drag to pan, double-click to
+zoom toward a region, or use the on-map controls. Broad genre regions split
+into niche labels and local similarity connections as you zoom in.
 
 ## Checks
 

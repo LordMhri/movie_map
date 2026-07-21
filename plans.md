@@ -102,6 +102,19 @@ Goal: prove the whole stack and ship a usable demo. Built in three phases so the
 - Parallelize the Go cosine scan with goroutines; add a simple benchmark.
 - Basic offline sanity checks on neighbor quality.
 
+### Completed: zoomable hierarchical map
+
+- Obsidian-style wheel/pinch zoom, drag panning, double-click focus, selection
+  centering, viewport culling, and fit controls.
+- Deterministic three-level clustering with broad genre regions and niche
+  genre-combination child regions.
+- Zoom-based detail: broad labels when zoomed out, child labels and local
+  similarity edges at medium zoom, and important movie titles close up.
+- Precomputed local edges stored in SQLite so the browser does not construct a
+  full all-to-all graph.
+- Phase 2 descriptions can replace genre-combination labels with semantic
+  themes without changing the frontend or API contract.
+
 # v2 - Iteration and hardening
 
 Improvements once v1 works, roughly in priority order.
