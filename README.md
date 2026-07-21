@@ -15,13 +15,13 @@ Phase 1: MovieLens 1M end to end.
 
 ## Build the artifacts
 
-Python 3.11–3.13 is recommended because ML package support can lag behind the
-latest Python release.
+Python 3.13 is recommended because ML package support can lag behind the latest
+Python release. With `uv` installed:
 
 ```bash
-python -m venv .venv
+uv venv --python 3.13 .venv
 source .venv/bin/activate
-pip install -r ml/requirements.txt
+uv pip install -r ml/requirements.txt
 python ml/pipeline.py
 ```
 
