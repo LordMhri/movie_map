@@ -220,6 +220,34 @@ h2 {
   cursor: grabbing;
 }
 
+.map-panel canvas.node-hovered:not(:active) {
+  cursor: pointer;
+}
+
+.map-node-tooltip {
+  position: absolute;
+  z-index: 2;
+  display: grid;
+  max-width: 220px;
+  gap: 2px;
+  padding: 8px 10px;
+  pointer-events: none;
+  border: 1px solid rgba(84, 112, 92, 0.25);
+  border-radius: 4px;
+  background: rgba(255, 253, 247, 0.96);
+  box-shadow: 0 8px 24px rgba(35, 46, 38, 0.14);
+}
+
+.map-node-tooltip strong {
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.map-node-tooltip span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
 .map-controls {
   position: absolute;
   top: 14px;

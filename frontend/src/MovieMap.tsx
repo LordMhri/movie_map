@@ -14,7 +14,7 @@ type ScreenPoint = {
 }
 
 const MIN_ZOOM = 0.7
-const MAX_ZOOM = 12
+const MAX_ZOOM = 40
 const COLORS = ['#54705c', '#9a6b4f', '#596f91', '#8c6d8d', '#7d793f', '#397d7a', '#a15b5b', '#667c4f']
 
 export function MovieMap({
@@ -42,6 +42,7 @@ export function MovieMap({
   const previousSelectedRef = useRef<number | null>(null)
   const [renderVersion, setRenderVersion] = useState(0)
   const [zoomPercent, setZoomPercent] = useState(100)
+  const [hoveredPoint, setHoveredPoint] = useState<ScreenPoint | null>(null)
 
   const bounds = useMemo(() => {
     if (movies.length === 0) return { minX: 0, maxX: 1, minY: 0, maxY: 1 }
@@ -79,6 +80,7 @@ export function MovieMap({
 
   const updateViewport = useCallback((viewport: Viewport) => {
     viewportRef.current = viewport
+    setHoveredPoint(null)
     setZoomPercent(Math.round(viewport.scale * 100))
     scheduleDraw()
   }, [scheduleDraw])
@@ -191,7 +193,15 @@ export function MovieMap({
     for (const point of visiblePoints) {
       const isSelected = point.movie.id === selected?.id
       const isNeighbor = selectedEdges.some((result) => result.movie.id === point.movie.id)
+      const isHovered = point.movie.id === hoveredPoint?.movie.id
       const colorIndex = broadOrder.get(point.movie.broadClusterId) ?? 0
+      if (isHovered) {
+        context.beginPath()
+        context.strokeStyle = 'rgba(32, 42, 36, .45)'
+        context.lineWidth = 1.5
+        context.arc(point.x, point.y, 8, 0, Math.PI * 2)
+        context.stroke()
+      }
       context.beginPath()
       context.fillStyle = isSelected
         ? '#e3572b'
@@ -201,7 +211,7 @@ export function MovieMap({
       context.arc(
         point.x,
         point.y,
-        isSelected ? 6.5 : isNeighbor ? 4 : Math.min(3.2, 1.5 + viewport.scale * 0.24),
+        isSelected ? 6.5 : isHovered ? 5 : isNeighbor ? 4 : Math.min(3.2, 1.5 + viewport.scale * 0.24),
         0,
         Math.PI * 2,
       )
@@ -227,7 +237,9 @@ export function MovieMap({
       for (const point of visiblePoints) {
         const important =
           point.movie.id === selected?.id ||
+          point.movie.id === hoveredPoint?.movie.id ||
           selectedEdges.some((result) => result.movie.id === point.movie.id) ||
+          viewport.scale >= 16 ||
           point.movie.ratingCount >= (viewport.scale >= 6 ? 60 : 350)
         if (!important) continue
         drawMovieTitle(context, point.movie.title, point.x, point.y - 9)
@@ -240,6 +252,7 @@ export function MovieMap({
     edges,
     selected,
     selectedEdges,
+    hoveredPoint,
     bounds,
     broadClusters,
     childClusters,
@@ -321,8 +334,14 @@ export function MovieMap({
   }
 
   function handlePointerMove(event: React.PointerEvent<HTMLCanvasElement>) {
-    if (!pointersRef.current.has(event.pointerId)) return
     const point = pointerPosition(event)
+    if (!pointersRef.current.has(event.pointerId)) {
+      const hit = movieAt(point.x, point.y)
+      setHoveredPoint((current) =>
+        current?.movie.id === hit?.movie.id ? current : hit,
+      )
+      return
+    }
     pointersRef.current.set(event.pointerId, point)
     const gesture = gestureRef.current
 
@@ -374,12 +393,21 @@ export function MovieMap({
     const rectangle = event.currentTarget.getBoundingClientRect()
     const x = event.clientX - rectangle.left
     const y = event.clientY - rectangle.top
+    const point = movieAt(x, y)
+    if (point) onSelect(point.movie)
+  }
+
+  function movieAt(x: number, y: number): ScreenPoint | null {
     let closest: { movie: Movie; distance: number } | null = null
     for (const point of screenPointsRef.current) {
       const distance = Math.hypot(point.x - x, point.y - y)
       if (!closest || distance < closest.distance) closest = { movie: point.movie, distance }
     }
-    if (closest && closest.distance < 13) onSelect(closest.movie)
+    if (!closest || closest.distance >= 16) return null
+    const screenPoint = screenPointsRef.current.find(
+      (point) => point.movie.id === closest.movie.id,
+    )
+    return screenPoint ?? null
   }
 
   function resetView() {
@@ -397,6 +425,7 @@ export function MovieMap({
     <div className="movie-map">
       <canvas
         ref={canvasRef}
+        className={hoveredPoint ? 'node-hovered' : undefined}
         onClick={handleClick}
         onDoubleClick={(event) => {
           const rectangle = event.currentTarget.getBoundingClientRect()
@@ -406,15 +435,27 @@ export function MovieMap({
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
+        onPointerLeave={() => setHoveredPoint(null)}
         aria-label="Interactive zoomable movie similarity map"
       />
+      {hoveredPoint && (
+        <div
+          className="map-node-tooltip"
+          style={{ left: hoveredPoint.x + 14, top: hoveredPoint.y + 14 }}
+        >
+          <strong>{hoveredPoint.movie.title}</strong>
+          <span>
+            {hoveredPoint.movie.year ?? 'Unknown year'} · Click for similar films
+          </span>
+        </div>
+      )}
       <div className="map-controls" aria-label="Map zoom controls">
         <button type="button" onClick={() => zoomAt(40, 40, 1.35)} aria-label="Zoom in">+</button>
         <span>{zoomPercent}%</span>
         <button type="button" onClick={() => zoomAt(40, 40, 1 / 1.35)} aria-label="Zoom out">−</button>
         <button type="button" className="fit-button" onClick={resetView}>Fit</button>
       </div>
-      <p className="map-hint">Scroll to zoom · drag to pan · double-click to explore</p>
+      <p className="map-hint">Scroll to zoom · drag to pan · click a movie for similar films</p>
     </div>
   )
 }
