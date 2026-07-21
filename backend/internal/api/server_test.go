@@ -87,6 +87,25 @@ func TestGeneratedArtifactsServeCoreRoutes(t *testing.T) {
 	})
 }
 
+func TestConfiguredCORS(t *testing.T) {
+	const allowedOrigin = "https://movie-map.pages.dev"
+	handler := withMiddleware(http.HandlerFunc(func(
+		response http.ResponseWriter,
+		_ *http.Request,
+	) {
+		response.WriteHeader(http.StatusOK)
+	}), allowedOrigin)
+
+	request := httptest.NewRequest(http.MethodGet, "/health", nil)
+	request.Header.Set("Origin", allowedOrigin)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+
+	if origin := response.Header().Get("Access-Control-Allow-Origin"); origin != allowedOrigin {
+		t.Fatalf("expected CORS origin %q, got %q", allowedOrigin, origin)
+	}
+}
+
 func request(t *testing.T, handler http.Handler, target string) *httptest.ResponseRecorder {
 	t.Helper()
 	request := httptest.NewRequest(http.MethodGet, target, nil)

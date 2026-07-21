@@ -1,0 +1,11 @@
+.git
+.github
+.venv
+.uv-cache
+.uv-python
+frontend
+ml
+ml-1m
+**/__pycache__
+**/node_modules
+**/dist

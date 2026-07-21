@@ -38,6 +38,10 @@ type mapResponse struct {
 }
 
 func New(store *artifacts.Store) http.Handler {
+	return NewWithAllowedOrigin(store, "http://localhost:5173")
+}
+
+func NewWithAllowedOrigin(store *artifacts.Store, allowedOrigin string) http.Handler {
 	server := &Server{store: store, engine: search.New(store)}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", server.health)
@@ -45,7 +49,7 @@ func New(store *artifacts.Store) http.Handler {
 	mux.HandleFunc("GET /movies/{id}/similar", server.similarMovies)
 	mux.HandleFunc("GET /map", server.movieMap)
 	mux.HandleFunc("GET /graph/{id}", server.movieGraph)
-	return withMiddleware(mux)
+	return withMiddleware(mux, allowedOrigin)
 }
 
 func (server *Server) health(response http.ResponseWriter, _ *http.Request) {
@@ -153,10 +157,19 @@ func writeJSON(response http.ResponseWriter, status int, value any) {
 	}
 }
 
-func withMiddleware(next http.Handler) http.Handler {
+func withMiddleware(next http.Handler, allowedOrigin string) http.Handler {
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-		response.Header().Set("Access-Control-Allow-Origin", "http://localhost:5173")
-		response.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		origin := request.Header.Get("Origin")
+		if allowedOrigin == "*" || origin == allowedOrigin {
+			response.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
+			response.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+			response.Header().Set("Access-Control-Allow-Methods", http.MethodGet)
+			response.Header().Add("Vary", "Origin")
+		}
+		if request.Method == http.MethodOptions {
+			response.WriteHeader(http.StatusNoContent)
+			return
+		}
 		next.ServeHTTP(response, request)
 	})
 }

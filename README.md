@@ -56,6 +56,27 @@ On the map, use the wheel or trackpad to zoom, drag to pan, double-click to
 zoom toward a region, or use the on-map controls. Broad genre regions split
 into niche labels and local similarity connections as you zoom in.
 
+## Deploy
+
+Keep the Git repository private because the generated artifacts are derived
+from MovieLens data. The raw MovieLens files remain excluded from Git.
+
+Deploy the API to Northflank from the repository root using `Dockerfile`.
+Expose container port `8080` publicly and use `/health` for health checks.
+Northflank supplies `PORT` automatically. After deploying the frontend, set
+the API environment variable below to its exact origin:
+
+```text
+ALLOWED_ORIGIN=https://your-project.pages.dev
+```
+
+Deploy the frontend to Cloudflare Pages with:
+
+- Root directory: `frontend`
+- Build command: `npm run build`
+- Output directory: `dist`
+- `VITE_API_URL`: the public Northflank service URL, without a trailing slash
+
 ## Checks
 
 ```bash
