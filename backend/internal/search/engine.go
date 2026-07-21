@@ -60,14 +60,13 @@ func (engine *Engine) Similar(movieID int, limit int, cfWeight float32) ([]Resul
 					continue
 				}
 				content, cf := engine.store.Vector(candidate.VectorIndex)
-				contentScore := cosine(queryContent, content)
-				cfScore, cfAvailable := cosineAvailable(queryCF, cf)
-				score := contentScore
-				if cfAvailable {
-					cfScore *= ratingConfidence(query.RatingCount) *
-						ratingConfidence(candidate.RatingCount)
-					score = (1-cfWeight)*contentScore + cfWeight*cfScore
-				}
+				score, contentScore, cfScore := hybridCosine(
+					queryContent,
+					content,
+					queryCF,
+					cf,
+					cfWeight,
+				)
 				results = append(results, Result{
 					Movie:        candidate,
 					Score:        score,
@@ -103,23 +102,49 @@ func cosine(left, right []float32) float32 {
 }
 
 func cosineAvailable(left, right []float32) (float32, bool) {
-	var dot, leftNorm, rightNorm float64
-	for index, leftValue := range left {
-		rightValue := right[index]
-		dot += float64(leftValue * rightValue)
-		leftNorm += float64(leftValue * leftValue)
-		rightNorm += float64(rightValue * rightValue)
-	}
+	dot, leftNorm, rightNorm := dotAndNorms(left, right)
 	if leftNorm == 0 || rightNorm == 0 {
 		return 0, false
 	}
 	return float32(dot / math.Sqrt(leftNorm*rightNorm)), true
 }
 
-func ratingConfidence(ratingCount int) float32 {
-	const shrinkage = 25
-	if ratingCount <= 0 {
-		return 0
+func hybridCosine(
+	leftContent, rightContent, leftCF, rightCF []float32,
+	cfWeight float32,
+) (score, contentScore, cfScore float32) {
+	contentDot, leftContentNorm, rightContentNorm := dotAndNorms(
+		leftContent,
+		rightContent,
+	)
+	cfDot, leftCFNorm, rightCFNorm := dotAndNorms(leftCF, rightCF)
+
+	if leftContentNorm > 0 && rightContentNorm > 0 {
+		contentScore = float32(
+			contentDot / math.Sqrt(leftContentNorm*rightContentNorm),
+		)
 	}
-	return float32(ratingCount) / float32(ratingCount+shrinkage)
+	// CF vector lengths already encode the pipeline's rating confidence.
+	cfScore = float32(cfDot)
+
+	contentWeight := float64(1 - cfWeight)
+	collaborativeWeight := float64(cfWeight)
+	combinedDot := contentWeight*contentDot + collaborativeWeight*cfDot
+	leftNorm := contentWeight*leftContentNorm + collaborativeWeight*leftCFNorm
+	rightNorm := contentWeight*rightContentNorm + collaborativeWeight*rightCFNorm
+	if leftNorm == 0 || rightNorm == 0 {
+		return 0, contentScore, cfScore
+	}
+	score = float32(combinedDot / math.Sqrt(leftNorm*rightNorm))
+	return score, contentScore, cfScore
+}
+
+func dotAndNorms(left, right []float32) (dot, leftNorm, rightNorm float64) {
+	for index, leftValue := range left {
+		rightValue := right[index]
+		dot += float64(leftValue * rightValue)
+		leftNorm += float64(leftValue * leftValue)
+		rightNorm += float64(rightValue * rightValue)
+	}
+	return dot, leftNorm, rightNorm
 }
