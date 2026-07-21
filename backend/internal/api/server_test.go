@@ -52,6 +52,39 @@ func TestGeneratedArtifactsServeCoreRoutes(t *testing.T) {
 			t.Fatalf("expected 5 recommendations, got %d", len(payload.Results))
 		}
 	})
+
+	t.Run("map hierarchy", func(t *testing.T) {
+		response := request(t, handler, "/map")
+		if response.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+		}
+		var payload mapResponse
+		if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+			t.Fatal(err)
+		}
+		if len(payload.Movies) != store.Manifest.MovieCount {
+			t.Fatalf("expected %d movies, got %d", store.Manifest.MovieCount, len(payload.Movies))
+		}
+		if len(payload.Clusters) == 0 || len(payload.Edges) == 0 {
+			t.Fatal("expected cluster metadata and map edges")
+		}
+
+		movieIDs := make(map[int]struct{}, len(payload.Movies))
+		for _, movie := range payload.Movies {
+			movieIDs[movie.ID] = struct{}{}
+			if movie.BroadClusterID == 0 || movie.ChildClusterID == 0 {
+				t.Fatalf("movie %d is missing cluster assignments", movie.ID)
+			}
+		}
+		for _, edge := range payload.Edges {
+			if _, ok := movieIDs[edge.Source]; !ok {
+				t.Fatalf("edge source %d is not a movie", edge.Source)
+			}
+			if _, ok := movieIDs[edge.Target]; !ok {
+				t.Fatalf("edge target %d is not a movie", edge.Target)
+			}
+		}
+	})
 }
 
 func request(t *testing.T, handler http.Handler, target string) *httptest.ResponseRecorder {

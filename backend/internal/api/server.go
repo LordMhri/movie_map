@@ -31,6 +31,12 @@ type graphResponse struct {
 	Links []graphLink       `json:"links"`
 }
 
+type mapResponse struct {
+	Movies   []artifacts.Movie   `json:"movies"`
+	Clusters []artifacts.Cluster `json:"clusters"`
+	Edges    []artifacts.MapEdge `json:"edges"`
+}
+
 func New(store *artifacts.Store) http.Handler {
 	server := &Server{store: store, engine: search.New(store)}
 	mux := http.NewServeMux()
@@ -80,7 +86,11 @@ func (server *Server) similarMovies(response http.ResponseWriter, request *http.
 }
 
 func (server *Server) movieMap(response http.ResponseWriter, _ *http.Request) {
-	writeJSON(response, http.StatusOK, server.store.Movies)
+	writeJSON(response, http.StatusOK, mapResponse{
+		Movies:   server.store.Movies,
+		Clusters: server.store.Clusters,
+		Edges:    server.store.MapEdges,
+	})
 }
 
 func (server *Server) movieGraph(response http.ResponseWriter, request *http.Request) {

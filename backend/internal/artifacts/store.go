@@ -24,20 +24,41 @@ type Manifest struct {
 }
 
 type Movie struct {
-	ID          int      `json:"id"`
-	VectorIndex int      `json:"-"`
-	Title       string   `json:"title"`
-	Year        *int     `json:"year"`
-	Genres      []string `json:"genres"`
-	RatingCount int      `json:"ratingCount"`
-	MapX        float32  `json:"x"`
-	MapY        float32  `json:"y"`
-	Source      string   `json:"source"`
+	ID             int      `json:"id"`
+	VectorIndex    int      `json:"-"`
+	Title          string   `json:"title"`
+	Year           *int     `json:"year"`
+	Genres         []string `json:"genres"`
+	RatingCount    int      `json:"ratingCount"`
+	MapX           float32  `json:"x"`
+	MapY           float32  `json:"y"`
+	Source         string   `json:"source"`
+	BroadClusterID int      `json:"broadClusterId"`
+	ChildClusterID int      `json:"childClusterId"`
+}
+
+type Cluster struct {
+	ID         int     `json:"id"`
+	ParentID   *int    `json:"parentId"`
+	Level      int     `json:"level"`
+	Label      string  `json:"label"`
+	X          float32 `json:"x"`
+	Y          float32 `json:"y"`
+	Radius     float32 `json:"radius"`
+	MovieCount int     `json:"movieCount"`
+}
+
+type MapEdge struct {
+	Source int     `json:"source"`
+	Target int     `json:"target"`
+	Score  float32 `json:"score"`
 }
 
 type Store struct {
 	Manifest Manifest
 	Movies   []Movie
+	Clusters []Cluster
+	MapEdges []MapEdge
 	Vectors  []float32
 	byID     map[int]int
 }
@@ -52,7 +73,7 @@ func Load(directory string) (*Store, error) {
 	if err := json.Unmarshal(manifestBytes, &manifest); err != nil {
 		return nil, fmt.Errorf("decode manifest: %w", err)
 	}
-	if manifest.Version != 1 || manifest.MovieCount <= 0 {
+	if manifest.Version != 2 || manifest.MovieCount <= 0 {
 		return nil, errors.New("unsupported or empty artifact manifest")
 	}
 
@@ -66,6 +87,14 @@ func Load(directory string) (*Store, error) {
 			manifest.MovieCount,
 			len(movies),
 		)
+	}
+	clusters, err := loadClusters(filepath.Join(directory, "movies.db"))
+	if err != nil {
+		return nil, err
+	}
+	mapEdges, err := loadMapEdges(filepath.Join(directory, "movies.db"))
+	if err != nil {
+		return nil, err
 	}
 
 	vectors, err := loadVectors(filepath.Join(directory, manifest.VectorFile))
@@ -89,6 +118,8 @@ func Load(directory string) (*Store, error) {
 	return &Store{
 		Manifest: manifest,
 		Movies:   movies,
+		Clusters: clusters,
+		MapEdges: mapEdges,
 		Vectors:  vectors,
 		byID:     byID,
 	}, nil
@@ -152,9 +183,16 @@ func loadMovies(path string) ([]Movie, error) {
 	defer database.Close()
 
 	rows, err := database.Query(`
-		SELECT id, vector_index, title, year, genres, rating_count, map_x, map_y, source
-		FROM movies
-		ORDER BY vector_index
+		SELECT
+			m.id, m.vector_index, m.title, m.year, m.genres, m.rating_count,
+			m.map_x, m.map_y, m.source,
+			COALESCE(broad.cluster_id, 0), COALESCE(child.cluster_id, 0)
+		FROM movies m
+		LEFT JOIN movie_clusters broad
+			ON broad.movie_id = m.id AND broad.level = 1
+		LEFT JOIN movie_clusters child
+			ON child.movie_id = m.id AND child.level = 2
+		ORDER BY m.vector_index
 	`)
 	if err != nil {
 		return nil, fmt.Errorf("query movies: %w", err)
@@ -176,6 +214,8 @@ func loadMovies(path string) ([]Movie, error) {
 			&movie.MapX,
 			&movie.MapY,
 			&movie.Source,
+			&movie.BroadClusterID,
+			&movie.ChildClusterID,
 		); err != nil {
 			return nil, fmt.Errorf("scan movie: %w", err)
 		}
@@ -187,6 +227,76 @@ func loadMovies(path string) ([]Movie, error) {
 		movies = append(movies, movie)
 	}
 	return movies, rows.Err()
+}
+
+func loadClusters(path string) ([]Cluster, error) {
+	database, err := sql.Open("sqlite", path)
+	if err != nil {
+		return nil, fmt.Errorf("open cluster database: %w", err)
+	}
+	defer database.Close()
+
+	rows, err := database.Query(`
+		SELECT id, parent_id, level, label, center_x, center_y, radius, movie_count
+		FROM clusters
+		ORDER BY level, id
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("query clusters: %w", err)
+	}
+	defer rows.Close()
+
+	var clusters []Cluster
+	for rows.Next() {
+		var cluster Cluster
+		var parentID sql.NullInt64
+		if err := rows.Scan(
+			&cluster.ID,
+			&parentID,
+			&cluster.Level,
+			&cluster.Label,
+			&cluster.X,
+			&cluster.Y,
+			&cluster.Radius,
+			&cluster.MovieCount,
+		); err != nil {
+			return nil, fmt.Errorf("scan cluster: %w", err)
+		}
+		if parentID.Valid {
+			value := int(parentID.Int64)
+			cluster.ParentID = &value
+		}
+		clusters = append(clusters, cluster)
+	}
+	return clusters, rows.Err()
+}
+
+func loadMapEdges(path string) ([]MapEdge, error) {
+	database, err := sql.Open("sqlite", path)
+	if err != nil {
+		return nil, fmt.Errorf("open edge database: %w", err)
+	}
+	defer database.Close()
+
+	rows, err := database.Query(`
+		SELECT source_id, target_id, score
+		FROM map_edges
+		ORDER BY source_id, target_id
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("query map edges: %w", err)
+	}
+	defer rows.Close()
+
+	var edges []MapEdge
+	for rows.Next() {
+		var edge MapEdge
+		if err := rows.Scan(&edge.Source, &edge.Target, &edge.Score); err != nil {
+			return nil, fmt.Errorf("scan map edge: %w", err)
+		}
+		edges = append(edges, edge)
+	}
+	return edges, rows.Err()
 }
 
 func loadVectors(path string) ([]float32, error) {
