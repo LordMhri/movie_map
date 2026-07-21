@@ -7,6 +7,7 @@ from pathlib import Path
 
 from collab import build_cf_vectors
 from combine import build_map_coordinates, combine_vectors
+from clusters import build_cluster_hierarchy, build_local_edges
 from content import DEFAULT_MODEL, build_content_vectors
 from export import export_artifacts
 from ingest import load_movies
@@ -48,6 +49,16 @@ def main() -> None:
         cf_weight=args.cf_weight,
     )
     coordinates = build_map_coordinates(combined_vectors)
+    clusters, cluster_assignments = build_cluster_hierarchy(
+        movies,
+        combined_vectors,
+        coordinates,
+    )
+    map_edges = build_local_edges(
+        combined_vectors,
+        cluster_assignments[:, 2],
+    )
+    print(f"Built {len(clusters):,} map regions and {len(map_edges):,} local edges")
 
     export_artifacts(
         args.output,
@@ -56,6 +67,9 @@ def main() -> None:
         cf_vectors,
         coordinates,
         rating_counts,
+        clusters,
+        cluster_assignments,
+        map_edges,
     )
     print(f"Wrote artifacts to {args.output}")
 

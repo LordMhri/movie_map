@@ -8,6 +8,7 @@ from pathlib import Path
 
 import numpy as np
 
+from clusters import Cluster, MapEdge
 from ingest import Movie
 
 
@@ -18,6 +19,9 @@ def export_artifacts(
     cf_vectors: np.ndarray,
     coordinates: np.ndarray,
     rating_counts: np.ndarray,
+    clusters: list[Cluster],
+    cluster_assignments: np.ndarray,
+    map_edges: list[MapEdge],
 ) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -27,14 +31,17 @@ def export_artifacts(
         == cf_vectors.shape[0]
         == coordinates.shape[0]
         == rating_counts.shape[0]
+        == cluster_assignments.shape[0]
     ):
         raise ValueError("all exported artifacts must have the same movie count")
+    if cluster_assignments.shape[1] != 3:
+        raise ValueError("cluster assignments must contain levels 0, 1, and 2")
 
     vectors = np.concatenate((content_vectors, cf_vectors), axis=1).astype("<f4")
     vectors.tofile(output_dir / "vectors.f32")
 
     manifest = {
-        "version": 1,
+        "version": 2,
         "movie_count": len(movies),
         "content_dimensions": int(content_vectors.shape[1]),
         "cf_dimensions": int(cf_vectors.shape[1]),
@@ -63,6 +70,34 @@ def export_artifacts(
                 source TEXT NOT NULL DEFAULT 'movielens-1m'
             );
             CREATE INDEX movies_title_idx ON movies(title COLLATE NOCASE);
+
+            CREATE TABLE clusters (
+                id INTEGER PRIMARY KEY,
+                parent_id INTEGER REFERENCES clusters(id),
+                level INTEGER NOT NULL,
+                label TEXT NOT NULL,
+                center_x REAL NOT NULL,
+                center_y REAL NOT NULL,
+                radius REAL NOT NULL,
+                movie_count INTEGER NOT NULL
+            );
+            CREATE INDEX clusters_level_idx ON clusters(level);
+
+            CREATE TABLE movie_clusters (
+                movie_id INTEGER NOT NULL REFERENCES movies(id),
+                level INTEGER NOT NULL,
+                cluster_id INTEGER NOT NULL REFERENCES clusters(id),
+                PRIMARY KEY (movie_id, level)
+            );
+            CREATE INDEX movie_clusters_cluster_idx
+                ON movie_clusters(cluster_id);
+
+            CREATE TABLE map_edges (
+                source_id INTEGER NOT NULL REFERENCES movies(id),
+                target_id INTEGER NOT NULL REFERENCES movies(id),
+                score REAL NOT NULL,
+                PRIMARY KEY (source_id, target_id)
+            );
             """
         )
         connection.executemany(
@@ -85,6 +120,51 @@ def export_artifacts(
                     float(coordinates[index, 1]),
                 )
                 for index, movie in enumerate(movies)
+            ),
+        )
+        connection.executemany(
+            """
+            INSERT INTO clusters (
+                id, parent_id, level, label, center_x, center_y, radius, movie_count
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                (
+                    cluster.cluster_id,
+                    cluster.parent_id,
+                    cluster.level,
+                    cluster.label,
+                    cluster.center_x,
+                    cluster.center_y,
+                    cluster.radius,
+                    cluster.movie_count,
+                )
+                for cluster in clusters
+            ),
+        )
+        connection.executemany(
+            """
+            INSERT INTO movie_clusters (movie_id, level, cluster_id)
+            VALUES (?, ?, ?)
+            """,
+            (
+                (movie.movie_id, level, int(cluster_assignments[index, level]))
+                for index, movie in enumerate(movies)
+                for level in range(cluster_assignments.shape[1])
+            ),
+        )
+        connection.executemany(
+            """
+            INSERT INTO map_edges (source_id, target_id, score)
+            VALUES (?, ?, ?)
+            """,
+            (
+                (
+                    movies[edge.source_index].movie_id,
+                    movies[edge.target_index].movie_id,
+                    edge.score,
+                )
+                for edge in map_edges
             ),
         )
         connection.commit()
