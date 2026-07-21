@@ -64,6 +64,8 @@ func (engine *Engine) Similar(movieID int, limit int, cfWeight float32) ([]Resul
 				cfScore, cfAvailable := cosineAvailable(queryCF, cf)
 				score := contentScore
 				if cfAvailable {
+					cfScore *= ratingConfidence(query.RatingCount) *
+						ratingConfidence(candidate.RatingCount)
 					score = (1-cfWeight)*contentScore + cfWeight*cfScore
 				}
 				results = append(results, Result{
@@ -112,4 +114,12 @@ func cosineAvailable(left, right []float32) (float32, bool) {
 		return 0, false
 	}
 	return float32(dot / math.Sqrt(leftNorm*rightNorm)), true
+}
+
+func ratingConfidence(ratingCount int) float32 {
+	const shrinkage = 25
+	if ratingCount <= 0 {
+		return 0
+	}
+	return float32(ratingCount) / float32(ratingCount+shrinkage)
 }
