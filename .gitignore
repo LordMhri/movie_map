@@ -7,6 +7,7 @@ data/*
 
 # MovieLens license does not permit redistribution
 ml-1m/*.dat
+archive/*.csv
 
 # Python
 .venv/

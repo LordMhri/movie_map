@@ -11,9 +11,20 @@ DEFAULT_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
 
 def movie_text(movie: Movie) -> str:
-    year = f" Release year: {movie.year}." if movie.year else ""
-    genres = ", ".join(movie.genres)
-    return f"Title: {movie.title}.{year} Genres: {genres}."
+    parts = [f"Title: {movie.title}."]
+    if movie.year:
+        parts.append(f"Release year: {movie.year}.")
+    if movie.genres:
+        parts.append(f"Genres: {', '.join(movie.genres)}.")
+    if movie.overview:
+        parts.append(f"Plot: {movie.overview}")
+    if movie.keywords:
+        parts.append(f"Keywords: {', '.join(movie.keywords)}.")
+    if movie.cast:
+        parts.append(f"Cast: {', '.join(movie.cast)}.")
+    if movie.directors:
+        parts.append(f"Directed by: {', '.join(movie.directors)}.")
+    return " ".join(parts)
 
 
 def normalize_rows(vectors: np.ndarray) -> np.ndarray:

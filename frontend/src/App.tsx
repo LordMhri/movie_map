@@ -1,6 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import './App.css'
+import { MapFilters } from './MapFilters'
+import { MapSkeleton } from './MapSkeleton'
 import { MovieMap } from './MovieMap'
+import { MovieInspector } from './MovieInspector'
+import { TopBar } from './TopBar'
 import type { Cluster, MapEdge, MapPayload, Movie, SimilarResponse, SimilarResult } from './types'
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8080'
@@ -15,6 +19,10 @@ function App() {
   const [suggestions, setSuggestions] = useState<Movie[]>([])
   const [cfWeight, setCfWeight] = useState(0.7)
   const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [genre, setGenre] = useState('')
+  const [yearStart, setYearStart] = useState(1870)
+  const [yearEnd, setYearEnd] = useState(new Date().getFullYear())
 
   useEffect(() => {
     fetch(`${API_URL}/map`)
@@ -29,6 +37,7 @@ function App() {
         if (payload.movies.length > 0) setSelected(payload.movies[0])
       })
       .catch((reason: Error) => setError(reason.message))
+      .finally(() => setLoading(false))
   }, [])
 
   useEffect(() => {
@@ -62,156 +71,121 @@ function App() {
 
   function chooseMovie(movie: Movie) {
     setSelected(movie)
+    setSimilar([])
     setQuery(movie.title)
     setSuggestions([])
   }
 
+  const genres = useMemo(
+    () => [...new Set(movies.flatMap((movie) => movie.genres))].sort(),
+    [movies],
+  )
+  const yearBounds = useMemo(() => {
+    const years = movies.flatMap((movie) => (movie.year ? [movie.year] : []))
+    return {
+      minimum: years.length ? Math.min(...years) : 1870,
+      maximum: years.length ? Math.max(...years) : new Date().getFullYear(),
+    }
+  }, [movies])
+  useEffect(() => {
+    setYearStart(yearBounds.minimum)
+    setYearEnd(yearBounds.maximum)
+  }, [yearBounds])
+
+  const visibleMovieIds = useMemo(() => {
+    const ids = new Set<number>()
+    for (const movie of movies) {
+      const genreMatches = !genre || movie.genres.includes(genre)
+      const yearMatches =
+        movie.year === null || (movie.year >= yearStart && movie.year <= yearEnd)
+      if (genreMatches && yearMatches) ids.add(movie.id)
+    }
+    return ids
+  }, [movies, genre, yearStart, yearEnd])
+
+  const filtersActive =
+    genre !== '' || yearStart !== yearBounds.minimum || yearEnd !== yearBounds.maximum
+
+  function resetFilters() {
+    setGenre('')
+    setYearStart(yearBounds.minimum)
+    setYearEnd(yearBounds.maximum)
+  }
+
   return (
-    <main>
-      <header>
-        <div>
-          <p className="eyebrow">MovieLens 1M · hybrid similarity</p>
-          <h1>Movie Map</h1>
-          <p className="subtitle">Explore what audiences liked together—and what feels alike.</p>
-        </div>
-        <div className="search">
-          <label htmlFor="movie-search">Find a movie</label>
-          <input
-            id="movie-search"
-            placeholder="Try The Matrix…"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            autoComplete="off"
-          />
-          {suggestions.length > 0 && (
-            <ul className="suggestions">
-              {suggestions.map((movie) => (
-                <li key={movie.id}>
-                  <button onClick={() => chooseMovie(movie)}>
-                    <span>{movie.title}</span>
-                    <small>{movie.year ?? 'Unknown year'}</small>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </header>
-
-      {error && <p className="error">{error}. Is the Go API running?</p>}
-
-      <section className="control-bar">
-        <div>
-          <span className="control-title">Similarity blend</span>
-          <span className="control-note">Move from story and genre toward audience taste.</span>
-        </div>
-        <div className="slider">
-          <span>Content</span>
-          <input
-            aria-label="Collaborative filtering weight"
-            type="range"
-            min="0"
-            max="1"
-            step="0.05"
-            value={cfWeight}
-            onChange={(event) => setCfWeight(Number(event.target.value))}
-          />
-          <span>Audience</span>
-          <output>{Math.round(cfWeight * 100)}%</output>
-        </div>
-      </section>
+    <main className="app-shell">
+      <TopBar
+        query={query}
+        suggestions={suggestions}
+        cfWeight={cfWeight}
+        onQueryChange={setQuery}
+        onChoose={chooseMovie}
+        onWeightChange={setCfWeight}
+      />
 
       <section className="workspace">
-        <article className="panel map-panel">
-          <div className="panel-heading">
+        <article className="map-panel">
+          <div className="map-heading">
             <div>
               <p className="eyebrow">The landscape</p>
-              <h2>Similarity map</h2>
+              <h1>Movie Map</h1>
             </div>
-            <span>{movies.length.toLocaleString()} films</span>
+            <span>
+              {visibleMovieIds.size.toLocaleString()} / {movies.length.toLocaleString()} films
+            </span>
           </div>
-          <MovieMap
-            movies={movies}
-            clusters={clusters}
-            edges={mapEdges}
-            selected={selected}
-            selectedEdges={similar}
-            onSelect={chooseMovie}
-          />
+
+          <div className="map-stage">
+            {loading ? (
+              <MapSkeleton />
+            ) : error ? (
+              <div className="map-state error-state">
+                <strong>The map could not be loaded</strong>
+                <span>{error}. Is the Go API running?</span>
+              </div>
+            ) : visibleMovieIds.size === 0 ? (
+              <div className="map-state">
+                <strong>No films match these filters</strong>
+                <button type="button" onClick={resetFilters}>Reset filters</button>
+              </div>
+            ) : (
+              <MovieMap
+                movies={movies}
+                clusters={clusters}
+                edges={mapEdges}
+                selected={selected}
+                selectedEdges={similar}
+                visibleMovieIds={visibleMovieIds}
+                onSelect={chooseMovie}
+              />
+            )}
+            {!loading && !error && (
+              <MapFilters
+                genres={genres}
+                genre={genre}
+                yearStart={yearStart}
+                yearEnd={yearEnd}
+                minimumYear={yearBounds.minimum}
+                maximumYear={yearBounds.maximum}
+                active={filtersActive}
+                onGenreChange={setGenre}
+                onYearStartChange={setYearStart}
+                onYearEndChange={setYearEnd}
+                onReset={resetFilters}
+              />
+            )}
+          </div>
         </article>
 
-        <aside className="right-column">
-          <article className="panel focus-panel">
-            <p className="eyebrow">Now exploring</p>
-            <h2>{selected?.title ?? 'Choose a film'}</h2>
-            <p className="metadata">
-              {[selected?.year, ...(selected?.genres ?? []).slice(0, 2)]
-                .filter(Boolean)
-                .join(' · ')}
-            </p>
-            <NeighborGraph query={selected} results={similar.slice(0, 8)} onSelect={chooseMovie} />
-          </article>
-
-          <article className="panel result-panel">
-            <div className="panel-heading">
-              <h2>Closest films</h2>
-              <span>score</span>
-            </div>
-            <ol>
-              {similar.map((result) => (
-                <li key={result.movie.id}>
-                  <button onClick={() => chooseMovie(result.movie)}>
-                    <span>
-                      <strong>{result.movie.title}</strong>
-                      <small>{result.movie.year}</small>
-                    </span>
-                    <b>{Math.round(result.score * 100)}</b>
-                  </button>
-                </li>
-              ))}
-            </ol>
-          </article>
-        </aside>
+        <MovieInspector
+          selected={selected}
+          results={similar}
+          cfWeight={cfWeight}
+          onSelect={chooseMovie}
+        />
       </section>
     </main>
   )
-}
-
-function NeighborGraph({
-  query,
-  results,
-  onSelect,
-}: {
-  query: Movie | null
-  results: SimilarResult[]
-  onSelect: (movie: Movie) => void
-}) {
-  if (!query) return <div className="graph empty">Search for a movie to begin.</div>
-  const center = { x: 180, y: 132 }
-  const nodes = results.map((result, index) => {
-    const angle = (index / Math.max(results.length, 1)) * Math.PI * 2 - Math.PI / 2
-    return { ...result, x: center.x + Math.cos(angle) * 102, y: center.y + Math.sin(angle) * 88 }
-  })
-
-  return (
-    <svg className="graph" viewBox="0 0 360 264" role="img" aria-label={`Movies similar to ${query.title}`}>
-      {nodes.map((node) => (
-        <line key={`line-${node.movie.id}`} x1={center.x} y1={center.y} x2={node.x} y2={node.y} />
-      ))}
-      <circle className="query-node" cx={center.x} cy={center.y} r="22" />
-      <text className="query-label" x={center.x} y={center.y + 35}>{shortTitle(query.title)}</text>
-      {nodes.map((node) => (
-        <g key={node.movie.id} onClick={() => onSelect(node.movie)} className="neighbor-node">
-          <circle cx={node.x} cy={node.y} r={7 + node.score * 5} />
-          <text x={node.x} y={node.y + 20}>{shortTitle(node.movie.title)}</text>
-        </g>
-      ))}
-    </svg>
-  )
-}
-
-function shortTitle(title: string) {
-  return title.length > 16 ? `${title.slice(0, 14)}…` : title
 }
 
 export default App

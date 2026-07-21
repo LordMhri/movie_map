@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from array import array
 from pathlib import Path
 
 import numpy as np
@@ -27,24 +28,29 @@ def build_cf_vectors(
         ) from exc
 
     movie_index = {movie.movie_id: index for index, movie in enumerate(movies)}
-    ratings = list(iter_ratings(ratings_path, set(movie_index)))
-    user_ids = sorted({rating.user_id for rating in ratings})
-    user_index = {user_id: index for index, user_id in enumerate(user_ids)}
+    row_buffer = array("i")
+    column_buffer = array("i")
+    value_buffer = array("f")
+    maximum_user_id = 0
+    for rating in iter_ratings(ratings_path, set(movie_index)):
+        row_buffer.append(rating.user_id)
+        column_buffer.append(movie_index[rating.movie_id])
+        value_buffer.append(rating.rating - 3.0)
+        maximum_user_id = max(maximum_user_id, rating.user_id)
 
-    rows = np.fromiter(
-        (user_index[rating.user_id] for rating in ratings), dtype=np.int32
-    )
-    columns = np.fromiter(
-        (movie_index[rating.movie_id] for rating in ratings), dtype=np.int32
-    )
-    values = np.fromiter((rating.rating - 3.0 for rating in ratings), dtype=np.float32)
+    columns = np.frombuffer(column_buffer, dtype=np.int32)
+    counts = np.bincount(columns, minlength=len(movies)).astype(np.int32)
+    if not row_buffer:
+        return np.zeros((len(movies), dimensions), dtype=np.float32), counts
+
+    rows = np.frombuffer(row_buffer, dtype=np.int32)
+    values = np.frombuffer(value_buffer, dtype=np.float32)
 
     matrix = coo_matrix(
         (values, (rows, columns)),
-        shape=(len(user_ids), len(movies)),
+        shape=(maximum_user_id + 1, len(movies)),
         dtype=np.float32,
     ).tocsr()
-    counts = np.bincount(columns, minlength=len(movies)).astype(np.int32)
 
     component_count = min(dimensions, min(matrix.shape) - 1)
     factorizer = TruncatedSVD(

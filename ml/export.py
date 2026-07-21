@@ -104,8 +104,8 @@ def export_artifacts(
             """
             INSERT INTO movies (
                 id, vector_index, title, original_title, year, genres,
-                rating_count, map_x, map_y
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                rating_count, map_x, map_y, source
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 (
@@ -118,6 +118,7 @@ def export_artifacts(
                     int(rating_counts[index]),
                     float(coordinates[index, 0]),
                     float(coordinates[index, 1]),
+                    movie.source,
                 )
                 for index, movie in enumerate(movies)
             ),

@@ -23,6 +23,7 @@ export function MovieMap({
   edges,
   selected,
   selectedEdges,
+  visibleMovieIds,
   onSelect,
 }: {
   movies: Movie[]
@@ -30,6 +31,7 @@ export function MovieMap({
   edges: MapEdge[]
   selected: Movie | null
   selectedEdges: SimilarResult[]
+  visibleMovieIds: Set<number>
   onSelect: (movie: Movie) => void
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -39,6 +41,10 @@ export function MovieMap({
   const screenPointsRef = useRef<ScreenPoint[]>([])
   const frameRef = useRef<number | null>(null)
   const animationRef = useRef<number | null>(null)
+  const introAnimationRef = useRef<number | null>(null)
+  const linkAnimationRef = useRef<number | null>(null)
+  const introProgressRef = useRef(0)
+  const linkProgressRef = useRef(1)
   const previousSelectedRef = useRef<number | null>(null)
   const [renderVersion, setRenderVersion] = useState(0)
   const [zoomPercent, setZoomPercent] = useState(100)
@@ -69,6 +75,20 @@ export function MovieMap({
     () => new Map(broadClusters.map((cluster, index) => [cluster.id, index])),
     [broadClusters],
   )
+  const broadByID = useMemo(
+    () => new Map(broadClusters.map((cluster) => [cluster.id, cluster])),
+    [broadClusters],
+  )
+  const prominentMovieIDs = useMemo(
+    () =>
+      new Set(
+        [...movies]
+          .sort((left, right) => right.ratingCount - left.ratingCount)
+          .slice(0, 1600)
+          .map((movie) => movie.id),
+      ),
+    [movies],
+  )
 
   const scheduleDraw = useCallback(() => {
     if (frameRef.current !== null) return
@@ -85,6 +105,17 @@ export function MovieMap({
     scheduleDraw()
   }, [scheduleDraw])
 
+  const finishIntro = useCallback(() => {
+    if (introAnimationRef.current !== null) {
+      cancelAnimationFrame(introAnimationRef.current)
+      introAnimationRef.current = null
+    }
+    if (introProgressRef.current < 1) {
+      introProgressRef.current = 1
+      scheduleDraw()
+    }
+  }, [scheduleDraw])
+
   const zoomAt = useCallback((x: number, y: number, factor: number) => {
     const current = viewportRef.current
     const scale = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, current.scale * factor))
@@ -95,6 +126,67 @@ export function MovieMap({
       y: y - (y - current.y) * ratio,
     })
   }, [updateViewport])
+
+  useEffect(() => {
+    if (movies.length === 0) return
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (reducedMotion) {
+      introProgressRef.current = 1
+      scheduleDraw()
+      return
+    }
+
+    introProgressRef.current = 0
+    const startedAt = performance.now()
+    const duration = 1750
+    const step = (now: number) => {
+      introProgressRef.current = Math.min(1, (now - startedAt) / duration)
+      scheduleDraw()
+      if (introProgressRef.current < 1) {
+        introAnimationRef.current = requestAnimationFrame(step)
+      } else {
+        introAnimationRef.current = null
+      }
+    }
+    introAnimationRef.current = requestAnimationFrame(step)
+    return () => {
+      if (introAnimationRef.current !== null) {
+        cancelAnimationFrame(introAnimationRef.current)
+        introAnimationRef.current = null
+      }
+    }
+  }, [movies.length, scheduleDraw])
+
+  useEffect(() => {
+    if (selectedEdges.length === 0) {
+      linkProgressRef.current = 1
+      return
+    }
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      linkProgressRef.current = 1
+      scheduleDraw()
+      return
+    }
+
+    linkProgressRef.current = 0
+    const startedAt = performance.now()
+    const step = (now: number) => {
+      linkProgressRef.current = Math.min(1, (now - startedAt) / 780)
+      scheduleDraw()
+      if (linkProgressRef.current < 1) {
+        linkAnimationRef.current = requestAnimationFrame(step)
+      } else {
+        linkAnimationRef.current = null
+      }
+    }
+    linkAnimationRef.current = requestAnimationFrame(step)
+    return () => {
+      if (linkAnimationRef.current !== null) {
+        cancelAnimationFrame(linkAnimationRef.current)
+        linkAnimationRef.current = null
+      }
+    }
+  }, [selectedEdges, scheduleDraw])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -122,8 +214,10 @@ export function MovieMap({
     const screenY = (y: number) => baseY(y) * viewport.scale + viewport.y
     const isVisible = (x: number, y: number, margin = 20) =>
       x >= -margin && x <= width + margin && y >= -margin && y <= height + margin
+    const introProgress = introProgressRef.current
 
     const activeRegions = viewport.scale < 1.8 ? broadClusters : childClusters
+    context.globalAlpha = clamp(introProgress / 0.22)
     for (const cluster of activeRegions) {
       const x = screenX(cluster.x)
       const y = screenY(cluster.y)
@@ -146,13 +240,35 @@ export function MovieMap({
       context.fill()
       context.stroke()
     }
+    context.globalAlpha = 1
     context.setLineDash([])
 
     const screenByID = new Map<number, { x: number; y: number }>()
     const visiblePoints: ScreenPoint[] = []
+    let remainingIndex = 0
+    const remainingReveal = clamp((introProgress - 0.42) / 0.48)
+    const remainingCount = Math.max(1, movies.length - prominentMovieIDs.size)
     for (const movie of movies) {
-      const x = screenX(movie.x)
-      const y = screenY(movie.y)
+      if (!visibleMovieIds.has(movie.id)) continue
+      const prominent = prominentMovieIDs.has(movie.id)
+      if (!prominent) {
+        const threshold = remainingIndex / remainingCount
+        remainingIndex += 1
+        if (threshold > remainingReveal) continue
+      }
+
+      let mapX = movie.x
+      let mapY = movie.y
+      if (prominent && introProgress < 0.72) {
+        const cluster = broadByID.get(movie.broadClusterId)
+        const progress = springProgress(clamp((introProgress - 0.08) / 0.58))
+        if (cluster) {
+          mapX = cluster.x + (movie.x - cluster.x) * progress
+          mapY = cluster.y + (movie.y - cluster.y) * progress
+        }
+      }
+      const x = screenX(mapX)
+      const y = screenY(mapY)
       screenByID.set(movie.id, { x, y })
       if (isVisible(x, y)) visiblePoints.push({ movie, x, y })
     }
@@ -178,13 +294,19 @@ export function MovieMap({
       const source = screenByID.get(selected.id)
       if (source) {
         context.lineWidth = 1.2
-        for (const result of selectedEdges) {
+        for (const [index, result] of selectedEdges.entries()) {
           const target = screenByID.get(result.movie.id)
           if (!target) continue
+          const progress = easeOutCubic(
+            clamp((linkProgressRef.current - index * 0.045) / 0.58),
+          )
           context.beginPath()
           context.strokeStyle = `rgba(217, 87, 43, ${0.18 + Math.max(0, result.score) * 0.55})`
           context.moveTo(source.x, source.y)
-          context.lineTo(target.x, target.y)
+          context.lineTo(
+            source.x + (target.x - source.x) * progress,
+            source.y + (target.y - source.y) * progress,
+          )
           context.stroke()
         }
       }
@@ -192,7 +314,10 @@ export function MovieMap({
 
     for (const point of visiblePoints) {
       const isSelected = point.movie.id === selected?.id
-      const isNeighbor = selectedEdges.some((result) => result.movie.id === point.movie.id)
+      const neighborIndex = selectedEdges.findIndex(
+        (result) => result.movie.id === point.movie.id,
+      )
+      const isNeighbor = neighborIndex >= 0
       const isHovered = point.movie.id === hoveredPoint?.movie.id
       const colorIndex = broadOrder.get(point.movie.broadClusterId) ?? 0
       if (isHovered) {
@@ -211,7 +336,13 @@ export function MovieMap({
       context.arc(
         point.x,
         point.y,
-        isSelected ? 6.5 : isHovered ? 5 : isNeighbor ? 4 : Math.min(3.2, 1.5 + viewport.scale * 0.24),
+        isSelected
+          ? 6.5
+          : isHovered
+            ? 5
+            : isNeighbor
+              ? 4 + neighborPulse(linkProgressRef.current, neighborIndex)
+              : Math.min(3.2, 1.5 + viewport.scale * 0.24),
         0,
         Math.PI * 2,
       )
@@ -257,6 +388,9 @@ export function MovieMap({
     broadClusters,
     childClusters,
     broadOrder,
+    broadByID,
+    prominentMovieIDs,
+    visibleMovieIds,
   ])
 
   useEffect(() => {
@@ -272,13 +406,14 @@ export function MovieMap({
     if (!canvas) return
     const handleWheel = (event: WheelEvent) => {
       event.preventDefault()
+      finishIntro()
       const rectangle = canvas.getBoundingClientRect()
       const factor = Math.exp(-event.deltaY * 0.0012)
       zoomAt(event.clientX - rectangle.left, event.clientY - rectangle.top, factor)
     }
     canvas.addEventListener('wheel', handleWheel, { passive: false })
     return () => canvas.removeEventListener('wheel', handleWheel)
-  }, [zoomAt])
+  }, [finishIntro, zoomAt])
 
   useEffect(() => {
     if (!selected || movies.length === 0) return
@@ -311,6 +446,8 @@ export function MovieMap({
   useEffect(() => () => {
     if (frameRef.current !== null) cancelAnimationFrame(frameRef.current)
     if (animationRef.current !== null) cancelAnimationFrame(animationRef.current)
+    if (introAnimationRef.current !== null) cancelAnimationFrame(introAnimationRef.current)
+    if (linkAnimationRef.current !== null) cancelAnimationFrame(linkAnimationRef.current)
   }, [])
 
   function pointerPosition(event: React.PointerEvent<HTMLCanvasElement>) {
@@ -319,6 +456,7 @@ export function MovieMap({
   }
 
   function handlePointerDown(event: React.PointerEvent<HTMLCanvasElement>) {
+    finishIntro()
     event.currentTarget.setPointerCapture(event.pointerId)
     const point = pointerPosition(event)
     pointersRef.current.set(event.pointerId, point)
@@ -490,6 +628,25 @@ function drawMovieTitle(
   context.textBaseline = 'bottom'
   context.fillStyle = 'rgba(32, 42, 36, .9)'
   context.fillText(text, x, y)
+}
+
+function clamp(value: number) {
+  return Math.max(0, Math.min(1, value))
+}
+
+function easeOutCubic(value: number) {
+  return 1 - (1 - value) ** 3
+}
+
+function springProgress(value: number) {
+  if (value >= 1) return 1
+  return 1 - Math.exp(-6 * value) * Math.cos(value * Math.PI * 3)
+}
+
+function neighborPulse(progress: number, index: number) {
+  const arrival = 0.58 + index * 0.045
+  const distance = Math.abs(progress - arrival)
+  return distance < 0.12 ? (1 - distance / 0.12) * 3.5 : 0
 }
 
 function animateViewport(

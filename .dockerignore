@@ -6,6 +6,7 @@
 frontend
 ml
 ml-1m
+archive
 **/__pycache__
 **/node_modules
 **/dist

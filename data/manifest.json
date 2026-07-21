@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "movie_count": 3883,
+  "movie_count": 45433,
   "content_dimensions": 384,
   "cf_dimensions": 64,
   "vector_file": "vectors.f32"
