@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Constellation } from './Constellation'
 import type { Cluster, MapEdge, Movie, SimilarResult } from './types'
 
 type Viewport = {
@@ -14,8 +15,9 @@ type ScreenPoint = {
 }
 
 const MIN_ZOOM = 0.7
-const MAX_ZOOM = 40
+const MAX_ZOOM = 80
 const COLORS = ['#54705c', '#9a6b4f', '#596f91', '#8c6d8d', '#7d793f', '#397d7a', '#a15b5b', '#667c4f']
+const NIGHT_COLORS = ['#4cc9ff', '#54ac68', '#ffef00', '#4cc9ff', '#54ac68', '#ffef00']
 
 export function MovieMap({
   movies,
@@ -24,6 +26,7 @@ export function MovieMap({
   selected,
   selectedEdges,
   visibleMovieIds,
+  darkMode,
   onSelect,
 }: {
   movies: Movie[]
@@ -32,6 +35,7 @@ export function MovieMap({
   selected: Movie | null
   selectedEdges: SimilarResult[]
   visibleMovieIds: Set<number>
+  darkMode: boolean
   onSelect: (movie: Movie) => void
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -49,6 +53,7 @@ export function MovieMap({
   const [renderVersion, setRenderVersion] = useState(0)
   const [zoomPercent, setZoomPercent] = useState(100)
   const [hoveredPoint, setHoveredPoint] = useState<ScreenPoint | null>(null)
+  const [constellationMode, setConstellationMode] = useState(false)
 
   const bounds = useMemo(() => {
     if (movies.length === 0) return { minX: 0, maxX: 1, minY: 0, maxY: 1 }
@@ -215,33 +220,7 @@ export function MovieMap({
     const isVisible = (x: number, y: number, margin = 20) =>
       x >= -margin && x <= width + margin && y >= -margin && y <= height + margin
     const introProgress = introProgressRef.current
-
-    const activeRegions = viewport.scale < 1.8 ? broadClusters : childClusters
-    context.globalAlpha = clamp(introProgress / 0.22)
-    for (const cluster of activeRegions) {
-      const x = screenX(cluster.x)
-      const y = screenY(cluster.y)
-      if (!isVisible(x, y, 160)) continue
-      const parent = cluster.level === 1 ? cluster.id : cluster.parentId ?? 0
-      const color = COLORS[(broadOrder.get(parent) ?? 0) % COLORS.length]
-      const radius = Math.max(
-        35,
-        (cluster.radius / Math.max(rangeX, rangeY)) *
-          Math.min(width, height) *
-          viewport.scale *
-          0.52,
-      )
-      context.beginPath()
-      context.fillStyle = `${color}0b`
-      context.strokeStyle = `${color}2b`
-      context.lineWidth = cluster.level === 1 ? 1.2 : 0.8
-      context.setLineDash(cluster.level === 1 ? [5, 7] : [3, 8])
-      context.arc(x, y, radius, 0, Math.PI * 2)
-      context.fill()
-      context.stroke()
-    }
-    context.globalAlpha = 1
-    context.setLineDash([])
+    const palette = darkMode ? NIGHT_COLORS : COLORS
 
     const screenByID = new Map<number, { x: number; y: number }>()
     const visiblePoints: ScreenPoint[] = []
@@ -301,7 +280,9 @@ export function MovieMap({
             clamp((linkProgressRef.current - index * 0.045) / 0.58),
           )
           context.beginPath()
-          context.strokeStyle = `rgba(217, 87, 43, ${0.18 + Math.max(0, result.score) * 0.55})`
+          context.strokeStyle = darkMode
+            ? `rgba(76, 201, 255, ${0.18 + Math.max(0, result.score) * 0.55})`
+            : `rgba(217, 87, 43, ${0.18 + Math.max(0, result.score) * 0.55})`
           context.moveTo(source.x, source.y)
           context.lineTo(
             source.x + (target.x - source.x) * progress,
@@ -322,17 +303,19 @@ export function MovieMap({
       const colorIndex = broadOrder.get(point.movie.broadClusterId) ?? 0
       if (isHovered) {
         context.beginPath()
-        context.strokeStyle = 'rgba(32, 42, 36, .45)'
+        context.strokeStyle = darkMode
+          ? 'rgba(76, 201, 255, .6)'
+          : 'rgba(32, 42, 36, .45)'
         context.lineWidth = 1.5
         context.arc(point.x, point.y, 8, 0, Math.PI * 2)
         context.stroke()
       }
       context.beginPath()
       context.fillStyle = isSelected
-        ? '#e3572b'
+        ? darkMode ? '#ffef00' : '#e3572b'
         : isNeighbor
-          ? '#e6a63f'
-          : `${COLORS[colorIndex % COLORS.length]}${viewport.scale < 1.3 ? '7d' : 'a8'}`
+          ? darkMode ? '#4cc9ff' : '#e6a63f'
+          : `${palette[colorIndex % palette.length]}${viewport.scale < 1.3 ? '7d' : 'a8'}`
       context.arc(
         point.x,
         point.y,
@@ -354,13 +337,14 @@ export function MovieMap({
       const x = screenX(cluster.x)
       const y = screenY(cluster.y)
       if (!isVisible(x, y, 100)) continue
-      drawLabel(
+        drawLabel(
         context,
         cluster.label,
         x,
         y,
         cluster.level === 1 ? 15 : 11,
         cluster.level === 1 ? 0.9 : Math.min(0.82, 0.35 + viewport.scale * 0.12),
+          darkMode,
       )
     }
 
@@ -373,7 +357,7 @@ export function MovieMap({
           viewport.scale >= 16 ||
           point.movie.ratingCount >= (viewport.scale >= 6 ? 60 : 350)
         if (!important) continue
-        drawMovieTitle(context, point.movie.title, point.x, point.y - 9)
+        drawMovieTitle(context, point.movie.title, point.x, point.y - 9, darkMode)
       }
     }
   }, [
@@ -391,6 +375,7 @@ export function MovieMap({
     broadByID,
     prominentMovieIDs,
     visibleMovieIds,
+    darkMode,
   ])
 
   useEffect(() => {
@@ -576,6 +561,14 @@ export function MovieMap({
         onPointerLeave={() => setHoveredPoint(null)}
         aria-label="Interactive zoomable movie similarity map"
       />
+      {constellationMode && selected && (
+        <Constellation
+          query={selected}
+          results={selectedEdges}
+          onSelect={onSelect}
+          onClose={() => setConstellationMode(false)}
+        />
+      )}
       {hoveredPoint && (
         <div
           className="map-node-tooltip"
@@ -588,6 +581,15 @@ export function MovieMap({
         </div>
       )}
       <div className="map-controls" aria-label="Map zoom controls">
+        <button
+          type="button"
+          className="constellation-button"
+          onClick={() => setConstellationMode((current) => !current)}
+          disabled={!selected || selectedEdges.length === 0}
+          aria-label="Toggle constellation mode"
+        >
+          ✦
+        </button>
         <button type="button" onClick={() => zoomAt(40, 40, 1.35)} aria-label="Zoom in">+</button>
         <span>{zoomPercent}%</span>
         <button type="button" onClick={() => zoomAt(40, 40, 1 / 1.35)} aria-label="Zoom out">−</button>
@@ -605,14 +607,19 @@ function drawLabel(
   y: number,
   size: number,
   opacity: number,
+  darkMode: boolean,
 ) {
   context.font = `600 ${size}px "DM Sans", sans-serif`
   context.textAlign = 'center'
   context.textBaseline = 'middle'
   const width = context.measureText(text).width + 16
-  context.fillStyle = `rgba(255, 253, 247, ${opacity * 0.88})`
+  context.fillStyle = darkMode
+    ? `rgba(11, 16, 32, ${opacity * 0.88})`
+    : `rgba(255, 253, 247, ${opacity * 0.88})`
   context.fillRect(x - width / 2, y - size, width, size * 2)
-  context.fillStyle = `rgba(32, 42, 36, ${opacity})`
+  context.fillStyle = darkMode
+    ? `rgba(234, 242, 255, ${opacity})`
+    : `rgba(32, 42, 36, ${opacity})`
   context.fillText(text, x, y)
 }
 
@@ -621,12 +628,13 @@ function drawMovieTitle(
   title: string,
   x: number,
   y: number,
+  darkMode: boolean,
 ) {
   const text = title.length > 24 ? `${title.slice(0, 22)}…` : title
   context.font = '600 9px "DM Sans", sans-serif'
   context.textAlign = 'center'
   context.textBaseline = 'bottom'
-  context.fillStyle = 'rgba(32, 42, 36, .9)'
+  context.fillStyle = darkMode ? 'rgba(234, 242, 255, .9)' : 'rgba(32, 42, 36, .9)'
   context.fillText(text, x, y)
 }
 

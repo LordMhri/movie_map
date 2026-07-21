@@ -7,6 +7,8 @@ export function TopBar({
   onQueryChange,
   onChoose,
   onWeightChange,
+  darkMode,
+  onThemeToggle,
 }: {
   query: string
   suggestions: Movie[]
@@ -14,6 +16,8 @@ export function TopBar({
   onQueryChange: (query: string) => void
   onChoose: (movie: Movie) => void
   onWeightChange: (weight: number) => void
+  darkMode: boolean
+  onThemeToggle: () => void
 }) {
   return (
     <header className="top-bar">
@@ -71,6 +75,15 @@ export function TopBar({
           />
           <span>Taste</span>
         </label>
+        <button
+          type="button"
+          className="theme-toggle"
+          onClick={onThemeToggle}
+          aria-label={`Use ${darkMode ? 'light' : 'dark'} theme`}
+          title={`Use ${darkMode ? 'light' : 'dark'} theme`}
+        >
+          {darkMode ? '☀' : '☾'}
+        </button>
       </div>
     </header>
   )

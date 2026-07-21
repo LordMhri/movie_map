@@ -8,15 +8,29 @@
   --cream: #f3f0e6;
   --paper: #fffdf7;
   --line: #d9ddd4;
+  --ground: #f0eee5;
   --display: 'Newsreader', Georgia, serif;
   color: var(--ink);
   background:
     radial-gradient(circle at 10% 0%, rgba(225, 218, 190, 0.6), transparent 30%),
-    #f0eee5;
+    var(--ground);
   font: 15px/1.45 'DM Sans', sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
+}
+
+:root[data-theme='dark'] {
+  --ink: #f4fbff;
+  --muted: #8ba2ac;
+  --moss: #4cc9ff;
+  --orange: #ffef00;
+  --cream: #08130d;
+  --paper: #000;
+  --line: #173b29;
+  --ground: #000;
+  color-scheme: dark;
+  background: var(--ground);
 }
 
 body {

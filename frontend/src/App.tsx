@@ -23,6 +23,15 @@ function App() {
   const [genre, setGenre] = useState('')
   const [yearStart, setYearStart] = useState(1870)
   const [yearEnd, setYearEnd] = useState(new Date().getFullYear())
+  const [darkMode, setDarkMode] = useState(() => {
+    const saved = window.localStorage.getItem('movie-map-theme')
+    return saved ? saved === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches
+  })
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = darkMode ? 'dark' : 'light'
+    window.localStorage.setItem('movie-map-theme', darkMode ? 'dark' : 'light')
+  }, [darkMode])
 
   useEffect(() => {
     fetch(`${API_URL}/map`)
@@ -121,6 +130,8 @@ function App() {
         onQueryChange={setQuery}
         onChoose={chooseMovie}
         onWeightChange={setCfWeight}
+        darkMode={darkMode}
+        onThemeToggle={() => setDarkMode((current) => !current)}
       />
 
       <section className="workspace">
@@ -156,6 +167,7 @@ function App() {
                 selected={selected}
                 selectedEdges={similar}
                 visibleMovieIds={visibleMovieIds}
+                darkMode={darkMode}
                 onSelect={chooseMovie}
               />
             )}

@@ -6,7 +6,7 @@ import argparse
 from pathlib import Path
 
 from collab import build_cf_vectors
-from combine import build_map_coordinates, combine_vectors
+from combine import build_map_coordinates
 from clusters import build_cluster_hierarchy, build_local_edges
 from content import DEFAULT_MODEL, build_content_vectors
 from export import export_artifacts
@@ -29,7 +29,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output", type=Path, default=PROJECT_ROOT / "data")
     parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument("--cf-dimensions", type=int, default=64)
-    parser.add_argument("--cf-weight", type=float, default=0.7)
     parser.add_argument("--min-ratings", type=int, default=20)
     return parser.parse_args()
 
@@ -51,19 +50,14 @@ def main() -> None:
     )
     print(f"Built {cf_vectors.shape[1]}-dimensional CF vectors")
 
-    combined_vectors = combine_vectors(
-        content_vectors,
-        cf_vectors,
-        cf_weight=args.cf_weight,
-    )
-    coordinates = build_map_coordinates(combined_vectors)
+    coordinates = build_map_coordinates(content_vectors)
     clusters, cluster_assignments = build_cluster_hierarchy(
         movies,
-        combined_vectors,
+        content_vectors,
         coordinates,
     )
     map_edges = build_local_edges(
-        combined_vectors,
+        content_vectors,
         cluster_assignments[:, 2],
     )
     print(f"Built {len(clusters):,} map regions and {len(map_edges):,} local edges")
