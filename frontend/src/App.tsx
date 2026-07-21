@@ -1,33 +1,14 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import './App.css'
-
-type Movie = {
-  id: number
-  title: string
-  year: number | null
-  genres: string[]
-  ratingCount: number
-  x: number
-  y: number
-  source: string
-}
-
-type SimilarResult = {
-  movie: Movie
-  score: number
-  contentScore: number
-  cfScore: number
-}
-
-type SimilarResponse = {
-  query: Movie
-  results: SimilarResult[]
-}
+import { MovieMap } from './MovieMap'
+import type { Cluster, MapEdge, MapPayload, Movie, SimilarResponse, SimilarResult } from './types'
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8080'
 
 function App() {
   const [movies, setMovies] = useState<Movie[]>([])
+  const [clusters, setClusters] = useState<Cluster[]>([])
+  const [mapEdges, setMapEdges] = useState<MapEdge[]>([])
   const [selected, setSelected] = useState<Movie | null>(null)
   const [similar, setSimilar] = useState<SimilarResult[]>([])
   const [query, setQuery] = useState('')
@@ -39,11 +20,13 @@ function App() {
     fetch(`${API_URL}/map`)
       .then((response) => {
         if (!response.ok) throw new Error('Could not load the movie map')
-        return response.json() as Promise<Movie[]>
+        return response.json() as Promise<MapPayload>
       })
-      .then((loadedMovies) => {
-        setMovies(loadedMovies)
-        if (loadedMovies.length > 0) setSelected(loadedMovies[0])
+      .then((payload) => {
+        setMovies(payload.movies)
+        setClusters(payload.clusters)
+        setMapEdges(payload.edges)
+        if (payload.movies.length > 0) setSelected(payload.movies[0])
       })
       .catch((reason: Error) => setError(reason.message))
   }, [])
@@ -149,8 +132,10 @@ function App() {
           </div>
           <MovieMap
             movies={movies}
+            clusters={clusters}
+            edges={mapEdges}
             selected={selected}
-            neighborIds={new Set(similar.map((result) => result.movie.id))}
+            selectedEdges={similar}
             onSelect={chooseMovie}
           />
         </article>
@@ -190,69 +175,6 @@ function App() {
       </section>
     </main>
   )
-}
-
-function MovieMap({
-  movies,
-  selected,
-  neighborIds,
-  onSelect,
-}: {
-  movies: Movie[]
-  selected: Movie | null
-  neighborIds: Set<number>
-  onSelect: (movie: Movie) => void
-}) {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const pointsRef = useRef<{ movie: Movie; x: number; y: number }[]>([])
-
-  useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas || movies.length === 0) return
-    const context = canvas.getContext('2d')
-    if (!context) return
-
-    const width = canvas.clientWidth
-    const height = canvas.clientHeight
-    const ratio = window.devicePixelRatio || 1
-    canvas.width = width * ratio
-    canvas.height = height * ratio
-    context.scale(ratio, ratio)
-    context.clearRect(0, 0, width, height)
-
-    const xs = movies.map((movie) => movie.x)
-    const ys = movies.map((movie) => movie.y)
-    const minX = Math.min(...xs)
-    const maxX = Math.max(...xs)
-    const minY = Math.min(...ys)
-    const maxY = Math.max(...ys)
-    const padding = 22
-    const scaleX = (value: number) => padding + ((value - minX) / (maxX - minX || 1)) * (width - padding * 2)
-    const scaleY = (value: number) => padding + ((value - minY) / (maxY - minY || 1)) * (height - padding * 2)
-
-    pointsRef.current = movies.map((movie) => ({ movie, x: scaleX(movie.x), y: scaleY(movie.y) }))
-    for (const point of pointsRef.current) {
-      const isSelected = point.movie.id === selected?.id
-      const isNeighbor = neighborIds.has(point.movie.id)
-      context.beginPath()
-      context.fillStyle = isSelected ? '#ff6b35' : isNeighbor ? '#f5b942' : 'rgba(157, 190, 174, .38)'
-      context.arc(point.x, point.y, isSelected ? 6 : isNeighbor ? 3.5 : 1.7, 0, Math.PI * 2)
-      context.fill()
-    }
-  }, [movies, selected, neighborIds])
-
-  function handleClick(event: React.MouseEvent<HTMLCanvasElement>) {
-    const bounds = event.currentTarget.getBoundingClientRect()
-    const x = event.clientX - bounds.left
-    const y = event.clientY - bounds.top
-    const closest = pointsRef.current.reduce<{ movie: Movie; distance: number } | null>((best, point) => {
-      const distance = Math.hypot(point.x - x, point.y - y)
-      return !best || distance < best.distance ? { movie: point.movie, distance } : best
-    }, null)
-    if (closest && closest.distance < 12) onSelect(closest.movie)
-  }
-
-  return <canvas ref={canvasRef} onClick={handleClick} aria-label="Interactive movie similarity map" />
 }
 
 function NeighborGraph({

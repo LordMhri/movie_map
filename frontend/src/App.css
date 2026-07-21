@@ -197,6 +197,11 @@ h2 {
   font-size: 12px;
 }
 
+.movie-map {
+  position: relative;
+  overflow: hidden;
+}
+
 .map-panel canvas {
   display: block;
   width: 100%;
@@ -206,7 +211,76 @@ h2 {
     linear-gradient(rgba(43, 63, 49, 0.035) 1px, transparent 1px),
     linear-gradient(90deg, rgba(43, 63, 49, 0.035) 1px, transparent 1px);
   background-size: auto, 32px 32px, 32px 32px;
-  cursor: crosshair;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.map-panel canvas:active {
+  cursor: grabbing;
+}
+
+.map-controls {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  border: 1px solid rgba(84, 112, 92, 0.28);
+  border-radius: 4px;
+  background: rgba(255, 253, 247, 0.92);
+  box-shadow: 0 8px 24px rgba(35, 46, 38, 0.1);
+  backdrop-filter: blur(8px);
+}
+
+.map-controls button,
+.map-controls span {
+  height: 34px;
+  border: 0;
+  border-right: 1px solid rgba(84, 112, 92, 0.18);
+  background: transparent;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.map-controls button {
+  min-width: 34px;
+  cursor: pointer;
+}
+
+.map-controls button:hover {
+  background: rgba(84, 112, 92, 0.09);
+}
+
+.map-controls span {
+  display: grid;
+  min-width: 54px;
+  place-items: center;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.map-controls .fit-button {
+  min-width: 44px;
+  border-right: 0;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.map-hint {
+  position: absolute;
+  bottom: 13px;
+  left: 50%;
+  padding: 6px 10px;
+  border: 1px solid rgba(84, 112, 92, 0.16);
+  border-radius: 3px;
+  background: rgba(255, 253, 247, 0.84);
+  color: var(--muted);
+  font-size: 10px;
+  pointer-events: none;
+  transform: translateX(-50%);
+  white-space: nowrap;
 }
 
 .focus-panel {
