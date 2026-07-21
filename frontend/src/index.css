@@ -1,0 +1,31 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&display=swap');
+
+:root {
+  --ink: #202a24;
+  --muted: #707a72;
+  --moss: #54705c;
+  --orange: #d9572b;
+  --cream: #f3f0e6;
+  --paper: #fffdf7;
+  --line: #d9ddd4;
+  --display: 'Newsreader', Georgia, serif;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 10% 0%, rgba(225, 218, 190, 0.6), transparent 30%),
+    #f0eee5;
+  font: 15px/1.45 'DM Sans', sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+}
+
+button,
+input {
+  font: inherit;
+}
